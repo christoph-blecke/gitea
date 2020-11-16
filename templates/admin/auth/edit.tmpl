@@ -295,6 +295,38 @@
 					</div>
 				{{end}}
 
+				<!-- RADIUS -->
+				{{if .Source.IsRADIUS}}
+					{{ $cfg:=.Source.RADIUS }}
+					<div class="required field">
+						<label for="radius_address">IP Address</label>
+						<input id="radius_address" name="radius_address" value="{{$cfg.Address}}">
+ 					</div>
+					<div class="required field">
+						<label for="radius_port">Port</label>
+						<input id="radius_port" name="radius_port" value="{{$cfg.Port}}">
+					</div>
+					<div class="required field">
+						<label for="radius_shared_secret">Shared Secret</label>
+						<input type="password" id="radius_shared_secret" name="radius_shared_secret" value="{{$cfg.SharedSecret}}">
+						<p class="help text red">Note: The shared secret is stored in plain text.</p>
+					</div>
+					<div class="required field">
+						<label for="radius_session_timeout">Session Timeout (in min)</label>
+						<input type="number" min="0" step="1" id="radius_session_timeout" name="radius_session_timeout" value="{{$cfg.SessionTimeout}}">
+						<p class="help text red">Maximum time a user can login with the same token from one client</p>
+					</div>
+					<div class="required field">
+						<label for="radius_timeout">Timeout (in sec)</label>
+						<input type="number" min="0" step="1" id="radius_timeout" name="radius_timeout" value="{{$cfg.Timeout}}">
+						<p class="help text red">Maximum time the RADIUS client wait until rejecting request.</p>
+					</div>
+					<div class="ui checkbox">
+						<label><strong>Create users if not exists</strong></label>
+						<input name="radius_create_user_if_not_exists" type="checkbox" {{if $cfg.CreateUserIfNotExists}}checked{{end}}>
+					</div>
+				{{end}}
+
 				<div class="inline field {{if not .Source.IsSMTP}}hide{{end}}">
 					<div class="ui checkbox">
 						<label><strong>{{.i18n.Tr "admin.auths.enable_tls"}}</strong></label>

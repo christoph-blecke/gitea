@@ -416,6 +416,44 @@ func (u *User) ValidatePassword(passwd string) bool {
 	return false
 }
 
+
+// ValidateUserSession checks if given ip address and client matches on one of the sessions belongs to the user
+func (u *User) ValidateUserSession(ipAddress, client, password string) bool {
+	userSessions, err := GetActiveUserSessions(u.ID)
+
+	if err != nil {
+		return false
+	}
+
+	for _, userSession := range userSessions {
+		if userSession.ValidateSession(u.ID, ipAddress, client, password) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// CreateUserSession creates a new user session 
+func (u *User) CreateNewUserSession(ipAddress, client, password string, seconds int64) (err error) {
+	// UserSessions are only handled by RADIUS
+	if u.LoginType != 8 {
+		return errors.New("A new user session should not established for Non-RADIUS users")
+	}
+
+	err = DeleteActiveSessionsByClient(u.ID, ipAddress, client)
+	if err != nil {
+		return err
+	}
+
+	// Check whether this session already exists
+	if u.ValidateUserSession(ipAddress, client, password) {
+		return ErrUserSessionAlreadyExist{u.ID}
+	}
+
+	return CreateUserSession(u.ID, ipAddress, client, password, seconds)
+}
+
 // IsPasswordSet checks if the password is set or left empty
 func (u *User) IsPasswordSet() bool {
 	return !u.ValidatePassword("")
@@ -1077,6 +1115,7 @@ func deleteUser(e *xorm.Session, u *User) error {
 		&TeamUser{UID: u.ID},
 		&Collaboration{UserID: u.ID},
 		&Stopwatch{UserID: u.ID},
+		&UserSession{UID: u.ID},
 	); err != nil {
 		return fmt.Errorf("deleteBeans: %v", err)
 	}

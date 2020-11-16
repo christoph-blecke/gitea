@@ -220,10 +220,31 @@ func HTTP(ctx *context.Context) {
 
 			if authUser == nil {
 				// Check username and password
-				authUser, err = models.UserSignIn(authUsername, authPasswd)
+				authUser, err = models.UserSignIn(authUsername, authPasswd, ctx.Req.RemoteAddr, ctx.Req.Header.Get("User-Agent"))
 				if err != nil {
 					if models.IsErrUserProhibitLogin(err) {
 						ctx.HandleText(http.StatusForbidden, "User is not permitted to login")
+						return
+						// Handle RADIUS errors
+					} else if models.IsErrRadiusAccessReject(err) {
+						log.Info("Failed authentication attempt for %s from %s [RADIUS: Access-Reject]", authUsername, ctx.RemoteAddr())
+						ctx.HandleText(http.StatusUnauthorized, "Received Access-Reject from RADIUS-Server")
+						return
+					} else if models.IsErrRadiusUnsupportedPacketType(err) {
+						log.Info("Failed authentication attempt for %s from %s [RADIUS: Unsupported packet type]", authUsername, ctx.RemoteAddr())
+						ctx.HandleText(http.StatusUnauthorized, "Received unknown packet type from RADIUS-Server")
+						return
+					} else if models.IsErrRadiusConnectionRefused(err) {
+						log.Info("Failed authentication attempt for %s from %s [RADIUS: Connection refused]", authUsername, ctx.RemoteAddr())
+						ctx.HandleText(http.StatusServiceUnavailable, "Connection refused by RADIUS-Server")
+						return
+					} else if models.IsErrRadiusDeadlineExceeded(err) {
+						log.Info("Failed authentication attempt for %s from %s [RADIUS: Deadline Exceeded]", authUsername, ctx.RemoteAddr())
+						ctx.HandleText(http.StatusServiceUnavailable, "Timeout by RADIUS-Server")
+						return
+					} else if models.IsErrRadiusNonAuthenticResponse(err) {
+						log.Info("Failed authentication attempt for %s from %s [RADIUS: Non-authentic response]", authUsername, ctx.RemoteAddr())
+						ctx.HandleText(http.StatusServiceUnavailable, "Non-authentic response by RADIUS-Server")
 						return
 					} else if !models.IsErrUserNotExist(err) {
 						ctx.ServerError("UserSignIn error: %v", err)

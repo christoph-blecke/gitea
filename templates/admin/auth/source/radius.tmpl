@@ -1,0 +1,29 @@
+<div class="radius field {{if not (eq .type 8)}}hide{{end}}">
+	<div class="required field">
+		<label for="radius_address">IP Address</label>
+		<input id="radius_address" name="radius_address" value="{{.radius_address}}">
+	</div>
+	<div class="required field">
+		<label for="radius_port">Port</label>
+		<input id="radius_port" name="radius_port" value="{{.radius_port}}">
+	</div>
+	<div class="required field">
+		<label for="radius_shared_secret">Shared Secret</label>
+		<input type="password" id="radius_shared_secret" name="radius_shared_secret" value="{{.radius_shared_secret}}">
+		<p class="help text red">Note: The shared secret is stored in plain text.</p>
+	</div>
+	<div class="required field">
+		<label for="radius_session_timeout">Session-Timeout (in min)</label>
+		<input type="number" min="0" step="1" id="session_radius_timeout" name="session_radius_timeout" value="{{.session_radius_timeout}}">
+		<p class="help text red">Maximum time a user can login with the same token from one client</p>
+	</div>
+	<div class="required field">
+		<label for="radius_timeout">Timeout (in sec)</label>
+		<input type="number" min="0" step="1" id="radius_timeout" name="radius_timeout" value="{{.radius_timeout}}">
+		<p class="help text red">Maximum time the RADIUS client wait until rejecting request.</p>
+	</div>
+	<div class="ui checkbox">
+		<label><strong>Create users if not exists</strong></label>
+		<input name="radius_create_user_if_not_exists" type="checkbox" {{if .radius_create_user_if_not_exists}}checked{{end}}>
+	</div>
+</div>

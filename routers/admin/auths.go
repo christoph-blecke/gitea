@@ -65,6 +65,7 @@ var (
 			{models.LoginNames[models.LoginSMTP], models.LoginSMTP},
 			{models.LoginNames[models.LoginOAuth2], models.LoginOAuth2},
 			{models.LoginNames[models.LoginSSPI], models.LoginSSPI},
+			{models.LoginNames[models.LoginRADIUS], models.LoginRADIUS},
 		}
 		if pam.Supported {
 			items = append(items, dropdownItem{models.LoginNames[models.LoginPAM], models.LoginPAM})
@@ -205,6 +206,18 @@ func parseSSPIConfig(ctx *context.Context, form auth.AuthenticationForm) (*model
 	}, nil
 }
 
+func parseRADIUSConfig(form auth.AuthenticationForm) *models.RADIUSConfig {
+	log.Trace(form.Name)
+	return &models.RADIUSConfig{
+		Address:               form.RADIUSAddress,
+		Port:                  form.RADIUSPort,
+		SharedSecret:          form.RADIUSSharedSecret,
+		SessionTimeout:        form.RADIUSSessionTimeout,
+		Timeout:               form.RADIUSTimeout,
+		CreateUserIfNotExists: form.RADIUSCreateUserIfNotExists,
+	}
+}
+
 // NewAuthSourcePost response for adding an auth source
 func NewAuthSourcePost(ctx *context.Context, form auth.AuthenticationForm) {
 	ctx.Data["Title"] = ctx.Tr("admin.auths.new")
@@ -240,6 +253,8 @@ func NewAuthSourcePost(ctx *context.Context, form auth.AuthenticationForm) {
 		}
 	case models.LoginOAuth2:
 		config = parseOAuth2Config(form)
+	case models.LoginRADIUS:
+		config = parseRADIUSConfig(form)
 	case models.LoginSSPI:
 		var err error
 		config, err = parseSSPIConfig(ctx, form)
@@ -352,6 +367,8 @@ func EditAuthSourcePost(ctx *context.Context, form auth.AuthenticationForm) {
 			ctx.RenderWithErr(err.Error(), tplAuthEdit, form)
 			return
 		}
+	case models.LoginRADIUS:
+		config = parseRADIUSConfig(form)
 	default:
 		ctx.Error(400)
 		return

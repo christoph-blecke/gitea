@@ -12,7 +12,7 @@ import (
 // AuthenticationForm form for authentication
 type AuthenticationForm struct {
 	ID                            int64
-	Type                          int    `binding:"Range(2,7)"`
+	Type                          int    `binding:"Range(2,8)"`
 	Name                          string `binding:"Required;MaxSize(30)"`
 	Host                          string
 	Port                          int
@@ -61,6 +61,12 @@ type AuthenticationForm struct {
 	SSPIStripDomainNames          bool
 	SSPISeparatorReplacement      string `binding:"AlphaDashDot;MaxSize(5)"`
 	SSPIDefaultLanguage           string
+	RADIUSAddress                 string
+	RADIUSPort                    string
+	RADIUSSharedSecret            string
+	RADIUSSessionTimeout          int64
+	RADIUSTimeout                 int64
+	RADIUSCreateUserIfNotExists   bool
 }
 
 // Validate validates fields

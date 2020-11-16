@@ -170,7 +170,7 @@ func SignInPost(ctx *context.Context, form auth.SignInForm) {
 		return
 	}
 
-	u, err := models.UserSignIn(form.UserName, form.Password)
+	u, err := models.UserSignIn(form.UserName, form.Password, ctx.Req.RemoteAddr, ctx.Req.Header.Get("User-Agent"))
 	if err != nil {
 		if models.IsErrUserNotExist(err) {
 			ctx.RenderWithErr(ctx.Tr("form.username_password_incorrect"), tplSignIn, &form)
@@ -191,6 +191,21 @@ func SignInPost(ctx *context.Context, form auth.SignInForm) {
 				ctx.Data["Title"] = ctx.Tr("auth.prohibit_login")
 				ctx.HTML(200, "user/auth/prohibit_login")
 			}
+		} else if models.IsErrRadiusAccessReject(err) {
+			log.Info("Failed authentication attempt for %s from %s [RADIUS: Access-Reject]", form.UserName, ctx.RemoteAddr())
+			ctx.RenderWithErr("RADIUS: Received Access-Reject", tplSignIn, &form)
+		} else if models.IsErrRadiusUnsupportedPacketType(err) {
+			log.Info("Failed authentication attempt for %s from %s [RADIUS: Unsupported packet type]", form.UserName, ctx.RemoteAddr())
+			ctx.RenderWithErr("RADIUS: Unsupported packet type", tplSignIn, &form)
+		} else if models.IsErrRadiusConnectionRefused(err) {
+			log.Info("Failed authentication attempt for %s from %s [RADIUS: Connection refused]", form.UserName, ctx.RemoteAddr())
+			ctx.RenderWithErr("RADIUS: Connection refused by server", tplSignIn, &form)
+		} else if models.IsErrRadiusDeadlineExceeded(err) {
+			log.Info("Failed authentication attempt for %s from %s [RADIUS: Timeout]", form.UserName, ctx.RemoteAddr())
+			ctx.RenderWithErr("RADIUS: Server timeout", tplSignIn, &form)
+		} else if models.IsErrRadiusNonAuthenticResponse(err) {
+			log.Info("Failed authentication attempt for %s from %s [RADIUS: Non-authentic response]", form.UserName, ctx.RemoteAddr())
+			ctx.RenderWithErr("RADIUS: Non-authentic response", tplSignIn, &form)
 		} else {
 			ctx.ServerError("UserSignIn", err)
 		}
@@ -806,7 +821,7 @@ func LinkAccountPostSignIn(ctx *context.Context, signInForm auth.SignInForm) {
 		return
 	}
 
-	u, err := models.UserSignIn(signInForm.UserName, signInForm.Password)
+	u, err := models.UserSignIn(signInForm.UserName, signInForm.Password, ctx.Req.RemoteAddr, ctx.Req.Header.Get("User-Agent"))
 	if err != nil {
 		if models.IsErrUserNotExist(err) {
 			ctx.Data["user_exists"] = true

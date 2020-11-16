@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/smtp"
 	"net/textproto"
 	"strings"
@@ -17,6 +18,7 @@ import (
 	"code.gitea.io/gitea/modules/auth/ldap"
 	"code.gitea.io/gitea/modules/auth/oauth2"
 	"code.gitea.io/gitea/modules/auth/pam"
+	"code.gitea.io/gitea/modules/auth/radius"
 	"code.gitea.io/gitea/modules/log"
 	"code.gitea.io/gitea/modules/setting"
 	"code.gitea.io/gitea/modules/timeutil"
@@ -39,6 +41,7 @@ const (
 	LoginDLDAP            // 5
 	LoginOAuth2           // 6
 	LoginSSPI             // 7
+	LoginRADIUS           // 8
 )
 
 // LoginNames contains the name of LoginType values.
@@ -49,6 +52,7 @@ var LoginNames = map[LoginType]string{
 	LoginPAM:    "PAM",
 	LoginOAuth2: "OAuth2",
 	LoginSSPI:   "SPNEGO with SSPI",
+	LoginRADIUS: "RADIUS",
 }
 
 // SecurityProtocolNames contains the name of SecurityProtocol values.
@@ -65,6 +69,7 @@ var (
 	_ convert.Conversion = &PAMConfig{}
 	_ convert.Conversion = &OAuth2Config{}
 	_ convert.Conversion = &SSPIConfig{}
+	_ convert.Conversion = &RADIUSConfig{}
 )
 
 // LDAPConfig holds configuration for LDAP login source.
@@ -161,6 +166,24 @@ func (cfg *SSPIConfig) ToDB() ([]byte, error) {
 	return json.Marshal(cfg)
 }
 
+// RADIUSConfig holds configuration for RADIUS Network Access Controller sign on
+type RADIUSConfig struct {
+	Address               string
+	Port                  string
+	SharedSecret          string
+	Timeout               int64
+	SessionTimeout        int64 // Defines how long a token is considered valid
+	CreateUserIfNotExists bool 
+}
+
+func (cfg *RADIUSConfig) FromDB(bs []byte) error {
+	return json.Unmarshal(bs, cfg)
+}
+
+func (cfg *RADIUSConfig) ToDB() ([]byte, error) {
+	return json.Marshal(cfg)
+}
+
 // LoginSource represents an external way for authorizing users.
 type LoginSource struct {
 	ID            int64 `xorm:"pk autoincr"`
@@ -199,6 +222,8 @@ func (source *LoginSource) BeforeSet(colName string, val xorm.Cell) {
 			source.Cfg = new(OAuth2Config)
 		case LoginSSPI:
 			source.Cfg = new(SSPIConfig)
+		case LoginRADIUS:
+			source.Cfg = new(RADIUSConfig)
 		default:
 			panic("unrecognized login source type: " + com.ToStr(*val))
 		}
@@ -238,6 +263,11 @@ func (source *LoginSource) IsOAuth2() bool {
 // IsSSPI returns true of this source is of the SSPI type.
 func (source *LoginSource) IsSSPI() bool {
 	return source.Type == LoginSSPI
+}
+
+// IsRADIUS returns true of this source is of the RADIUS type
+func (source *LoginSource) IsRADIUS() bool {
+	return source.Type == LoginRADIUS
 }
 
 // HasTLS returns true of this source supports TLS.
@@ -700,8 +730,107 @@ func LoginViaPAM(user *User, login, password string, sourceID int64, cfg *PAMCon
 	return user, CreateUser(user)
 }
 
+//__________    _____  ________  .___ ____ ___  _________
+//\______   \  /  _  \ \______ \ |   |    |   \/   _____/
+// |       _/ /  /_\  \ |    |  \|   |    |   /\_____  \
+// |    |   \/    |    \|    `   \   |    |  / /        \
+// |____|_  /\____|__  /_______  /___|______/ /_______  /
+//        \/         \/        \/                     \/
+
+// LoginViaRADIUS sends an Access-Request to the RADIUS server given in
+// the configruation and create a local user if succcess when enabled
+func LoginViaRADIUS(user *User, login, password, ipAddress, client string, sourceID int64, cfg *RADIUSConfig) (*User, error) {
+	// The git client does not support 2FA. 
+	// This problem occurs mainly when PUSH or PULL requests are executed repeatedly. 
+	// To work around this problem and to improve usability, it checks if a session 
+	// already exists for this user and creates a new session if an access accept occurs. 
+	host, _, _ := net.SplitHostPort(ipAddress)
+	current := timeutil.TimeStampNow()
+	duration := int64(8)
+	log.Warn("INFO: User %s, Timestamp: %d", login, int64(current))
+
+	if user != nil {
+		// Case 1: The user has been logged in a few moments ago from the same client
+		// Trial and error: 8 seconds is a value at which all requests work
+		// Update user, but not session
+		if (current.Add(-duration) < user.UpdatedUnix) && user.ValidatePassword(password) {
+
+			user.HashPassword(password)
+			err := UpdateUser(user)
+			if err != nil {
+				return nil, err
+			}
+			return user, nil 
+		}
+		
+		// Case 2: The user has been logged in from same client and a session exists
+		// Update nothing
+		if user.ValidateUserSession(host, client, password) {
+			return user, nil
+		}
+	}
+
+	// Case 3: The user has not been logged in, send RADIUS request
+	// Update user and create session
+	radiusLogin, err := radius.Auth(cfg.Address, cfg.Port, cfg.SharedSecret, login, password, cfg.Timeout)
+	if err != nil {
+		if strings.Contains(err.Error(), "Authentication failure") {
+			return nil, ErrUserNotExist{0, login, 0}
+		} else if strings.Contains(err.Error(), "Access-Reject") {
+			return nil, ErrRadiusAccessReject{cfg.Address}
+		} else if strings.Contains(err.Error(), "unsupported packet type") {
+			return nil, ErrRadiusUnsupportedPacketType{cfg.Address}
+		} else if strings.Contains(err.Error(), "connection refused") {
+			return nil, ErrRadiusConnectionRefused{cfg.Address}
+		} else if strings.Contains(err.Error(), "context deadline exceeded") {
+			return nil, ErrRadiusDeadlineExceeded{cfg.Address}
+		} else if strings.Contains(err.Error(), "non-authentic response") {
+			return nil, ErrRadiusNonAuthenticResponse{cfg.Address}
+		}
+		return nil, err
+	}
+	
+	if user != nil {
+		// Update user and store password
+		user.HashPassword(password)
+		err := UpdateUser(user)
+		if err != nil {
+			return nil, err
+		}
+
+		// Create new user session
+		user.CreateNewUserSession(host, client, password, cfg.SessionTimeout*60)
+		return user, nil
+	}
+
+	// Case 4: The user does not exist. Create a new user, if this function is enabled
+	// Create user and session
+	if cfg.CreateUserIfNotExists {
+		user = &User{
+			LowerName:   strings.ToLower(login),
+			Name:        radiusLogin,
+			Email:       radiusLogin+"@"+cfg.Address, //TODO: Add mail-domain to configuration
+			Passwd:      password,
+			LoginType:   LoginRADIUS,
+			LoginSource: sourceID,
+			LoginName:   login,
+			IsActive:    true,
+		}
+
+		err := CreateUser(user)
+		if err != nil {
+			return nil, err
+		}
+		user.CreateNewUserSession(host, client, password, cfg.SessionTimeout)
+		return user, nil
+	}
+
+	// Case 5: User not exist
+	return nil, ErrUserNotExist{0, login, 0}
+}
+
 // ExternalUserLogin attempts a login using external source types.
-func ExternalUserLogin(user *User, login, password string, source *LoginSource) (*User, error) {
+func ExternalUserLogin(user *User, login, password, ipAddress, client string, source *LoginSource) (*User, error) {
 	if !source.IsActived {
 		return nil, ErrLoginSourceNotActived
 	}
@@ -714,6 +843,9 @@ func ExternalUserLogin(user *User, login, password string, source *LoginSource) 
 		user, err = LoginViaSMTP(user, login, password, source.ID, source.Cfg.(*SMTPConfig))
 	case LoginPAM:
 		user, err = LoginViaPAM(user, login, password, source.ID, source.Cfg.(*PAMConfig))
+	case LoginRADIUS:
+		// The RADIUS Login needs ipAddress and client to fix 2FA problems
+		user, err = LoginViaRADIUS(user, login, password, ipAddress, client, source.ID, source.Cfg.(*RADIUSConfig))
 	default:
 		return nil, ErrUnsupportedLoginType
 	}
@@ -732,7 +864,7 @@ func ExternalUserLogin(user *User, login, password string, source *LoginSource) 
 }
 
 // UserSignIn validates user name and password.
-func UserSignIn(username, password string) (*User, error) {
+func UserSignIn(username, password, ipAddress, client string) (*User, error) {
 	var user *User
 	if strings.Contains(username, "@") {
 		user = &User{Email: strings.ToLower(strings.TrimSpace(username))}
@@ -793,7 +925,7 @@ func UserSignIn(username, password string) (*User, error) {
 				return nil, ErrLoginSourceNotExist{user.LoginSource}
 			}
 
-			return ExternalUserLogin(user, user.LoginName, password, &source)
+			return ExternalUserLogin(user, user.LoginName, password, ipAddress, client, &source)
 		}
 	}
 
@@ -807,7 +939,7 @@ func UserSignIn(username, password string) (*User, error) {
 			// don't try to authenticate against OAuth2 and SSPI sources here
 			continue
 		}
-		authUser, err := ExternalUserLogin(nil, username, password, source)
+		authUser, err := ExternalUserLogin(nil, username, password, ipAddress, client, source)
 		if err == nil {
 			return authUser, nil
 		}

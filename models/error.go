@@ -282,6 +282,132 @@ func (err ErrReachLimitOfRepo) Error() string {
 	return fmt.Sprintf("user has reached maximum limit of repositories [limit: %d]", err.Limit)
 }
 
+//  ____ ___                               _________                    .__               
+// |    |   \______ ___________           /   _____/ ____   ______ _____|__| ____   ____  
+// |    |   /  ___// __ \_  __ \  ______  \_____  \_/ __ \ /  ___//  ___/  |/  _ \ /    \ 
+// |    |  /\___ \\  ___/|  | \/ /_____/  /        \  ___/ \___ \ \___ \|  (  <_> )   |  \
+// |______//____  >\___  >__|            /_______  /\___  >____  >____  >__|\____/|___|  /
+//              \/     \/                        \/     \/     \/     \/               \/
+
+// ErrUserSessionNotExist
+type ErrUserSessionNotExist struct {
+	UID int64
+}
+
+func IsErrUserSessionotExist(err error) bool {
+	_, ok := err.(ErrUserSessionNotExist)
+	return ok
+}
+
+func (err ErrUserSessionNotExist) Error() string {
+	return fmt.Sprintf("Session for user %d does not exist", err.UID)
+}
+
+// ErrUserSessionlreadyExist
+type ErrUserSessionAlreadyExist struct {
+	UID int64
+}
+
+func IsErrUserSessionAlreadyExist(err error) bool {
+	_, ok := err.(ErrUserSessionAlreadyExist)
+	return ok
+}
+
+func (err ErrUserSessionAlreadyExist) Error() string {
+	return fmt.Sprintf("Session for user %d already exist", err.UID)
+}
+
+// ErrUserSessionCannotBeValidated
+type ErrUserSessionCannotBeValidated struct {
+	UID int64
+}
+
+func IsErrUserSessionCannotBeValidated(err error) bool {
+	_, ok := err.(ErrUserSessionCannotBeValidated)
+	return ok
+}
+
+func (err ErrUserSessionCannotBeValidated) Error() string {
+	return fmt.Sprintf("Session for user %d cannot be validated", err.UID)
+}
+
+// __________    _____  ________  .___ ____ ___  _________
+// \______   \  /  _  \ \______ \ |   |    |   \/   _____/
+//  |       _/ /  /_\  \ |    |  \|   |    |   /\_____  \
+//  |    |   \/    |    \|    `   \   |    |  / /        \
+//  |____|_  /\____|__  /_______  /___|______/ /_______  /
+//         \/         \/        \/                     \/
+
+// ErrRadiusAccessReject: Receiving reject from RADIUS-Server
+type ErrRadiusAccessReject struct {
+	ServerAddress string
+}
+
+func IsErrRadiusAccessReject(err error) bool {
+	_, ok := err.(ErrRadiusAccessReject)
+	return ok
+}
+
+func (err ErrRadiusAccessReject) Error() string {
+	return fmt.Sprintf("Received Access-Reject from RADIUS-Server [Server: %s]", err.ServerAddress)
+}
+
+// ErrRadiusUnsupportedPacketType: Unknown packet type
+type ErrRadiusUnsupportedPacketType struct {
+	ServerAddress string
+}
+
+func IsErrRadiusUnsupportedPacketType(err error) bool {
+	_, ok := err.(ErrRadiusUnsupportedPacketType)
+	return ok
+}
+
+func (err ErrRadiusUnsupportedPacketType) Error() string {
+	return fmt.Sprintf("Received unknown packet-type from RADIUS-Server [Server: %s]", err.ServerAddress)
+}
+
+// ErrRadiusConnectionRefused: RADIUS-Server is not available
+type ErrRadiusConnectionRefused struct {
+	ServerAddress string
+}
+
+func IsErrRadiusConnectionRefused(err error) bool {
+	_, ok := err.(ErrRadiusConnectionRefused)
+	return ok
+}
+
+func (err ErrRadiusConnectionRefused) Error() string {
+	return fmt.Sprintf("Connection refused by RADIUS-Server [Server: %s]", err.ServerAddress)
+}
+
+// ErrRadiusDeadlineExceeded: RADIUS-Server is not responding
+type ErrRadiusDeadlineExceeded struct {
+	ServerAddress string
+}
+
+func IsErrRadiusDeadlineExceeded(err error) bool {
+	_, ok := err.(ErrRadiusDeadlineExceeded)
+	return ok
+}
+
+func (err ErrRadiusDeadlineExceeded) Error() string {
+	return fmt.Sprintf("RADIUS-Server is not responding [Server: %s]", err.ServerAddress)
+}
+
+// ErrRadiusNonAuthenticResponse: Response is not authentic
+type ErrRadiusNonAuthenticResponse struct {
+	ServerAddress string
+}
+
+func IsErrRadiusNonAuthenticResponse(err error) bool {
+	_, ok := err.(ErrRadiusNonAuthenticResponse)
+	return ok
+}
+
+func (err ErrRadiusNonAuthenticResponse) Error() string {
+	return fmt.Sprintf("RADIUS-Server is sending non-authentic response [Server: %s]", err.ServerAddress)
+}
+
 //  __      __.__ __   .__
 // /  \    /  \__|  | _|__|
 // \   \/\/   /  |  |/ /  |

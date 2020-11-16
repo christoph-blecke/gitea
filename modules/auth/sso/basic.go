@@ -100,7 +100,7 @@ func (b *Basic) VerifyAuthData(ctx *macaron.Context, sess session.Store) *models
 	}
 
 	if u == nil {
-		u, err = models.UserSignIn(uname, passwd)
+		u, err = models.UserSignIn(uname, passwd, ctx.Req.RemoteAddr, ctx.Req.Header.Get("User-Agent"))
 		if err != nil {
 			if !models.IsErrUserNotExist(err) {
 				log.Error("UserSignIn: %v", err)
